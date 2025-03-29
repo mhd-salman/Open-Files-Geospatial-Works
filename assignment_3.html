@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campus Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/ol@latest/ol.css">
+    <script src="https://unpkg.com/ol@latest/dist/ol.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            padding: 10px 0;
+            background-color: rgba(255, 255, 255, 0.7); /* Semi-transparent white */
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            z-index: 1000; /* Ensure title stays above the map */
+        }
+        h1 {
+            margin: 0;
+            color: #000; /* Black text for contrast */
+            font-size: 24px;
+            text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8); /* Improve readability */
+        }
+        #map {
+            width: 100%;
+            height: 100vh; /* Full viewport height */
+            margin-top: 0;
+        }
+        .layer-control {
+            position: absolute;
+            top: 70px; /* Adjusted to avoid overlapping with title */
+            right: 10px;
+            background: rgba(255, 255, 255, 0.9); /* Slightly opaque for consistency */
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+        }
+        .layer-control button {
+            display: block;
+            margin: 5px 0;
+            padding: 8px 12px;
+            width: 100%;
+            background-color: black;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        .layer-control button:hover {
+            background-color: #333;
+        }
+        .popup {
+            position: absolute;
+            background: #add8e6;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            display: none;
+            max-width: 300px;
+            border: 2px solid #000;
+        }
+        .popup table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+        }
+        .popup table, th, td {
+            border: 1px solid #000;
+        }
+        .popup th {
+            background-color: #f2f2f2;
+        }
+        .popup th, .popup td {
+            padding: 8px;
+            text-align: left;
+        }
+        .popup-close {
+            float: right;
+            cursor: pointer;
+            font-weight: bold;
+            color: #000;
+            font-size: 18px;
+        }
+        .popup h3 {
+            margin-top: 0;
+            color: #000;
+            border-bottom: 1px solid #000;
+            padding-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Repair/Maintenance Attending System for NITW Campus Amenities</h1>
+    </header>
+    <div id="map"></div>
+    <div class="layer-control">
+        <button id="osm">OSM Base Map</button>
+        <button id="boundary">Boundary</button>
+        <button id="academic">Academic Buildings</button>
+        <button id="residential">Residential Buildings</button>
+        <button id="roads">Roads</button>
+        <button id="sports">Sports Areas</button>
+    </div>
+    <div id="popup" class="popup">
+        <span class="popup-close" onclick="document.getElementById('popup').style.display='none'">×</span>
+        <h3>Feature Info</h3>
+        <div id="popup-content"></div>
+    </div>
+
+    <script>
+        // Create map with OSM base layer
+        var map = new ol.Map({
+            target: 'map',
+            layers: [
+                new ol.layer.Tile({
+                    source: new ol.source.OSM(),
+                    visible: true,
+                    title: 'OSM'
+                })
+            ],
+            view: new ol.View({
+                center: ol.proj.fromLonLat([78.5, 17.5]),
+                zoom: 15
+            })
+        });
+
+        // Create layers
+        var boundaryLayer = new ol.layer.Vector({
+            source: new ol.source.Vector({
+                url: 'boundary_geojson.geojson',
+                format: new ol.format.GeoJSON()
+            }),
+            style: new ol.style.Style({
+                stroke: new ol.style.Stroke({ color: 'black', width: 2 }),
+                fill: new ol.style.Fill({ color: 'rgba(0, 0, 0, 0.1)' })
+            }),
+            visible: false,
+            title: 'Boundary'
+        });
+
+        var academicbuildingsLayer = new ol.layer.Vector({
+            source: new ol.source.Vector({
+                url: 'academics_geojson.geojson',
+                format: new ol.format.GeoJSON()
+            }),
+            style: new ol.style.Style({
+                stroke: new ol.style.Stroke({ color: 'black', width: 1 }),
+                fill: new ol.style.Fill({ color: 'rgba(0, 0, 255, 0.7)' })
+            }),
+            visible: false,
+            title: 'Academic Buildings'
+        });
+
+        var residentialbuildingsLayer = new ol.layer.Vector({
+            source: new ol.source.Vector({
+                url: 'residential_buildings.geojson',
+                format: new ol.format.GeoJSON()
+            }),
+            style: new ol.style.Style({
+                stroke: new ol.style.Stroke({ color: 'black', width: 1 }),
+                fill: new ol.style.Fill({ color: 'rgba(255, 0, 0, 0.7)' })
+            }),
+            visible: false,
+            title: 'Residential Buildings'
+        });
+
+        var roadsLayer = new ol.layer.Vector({
+            source: new ol.source.Vector({
+                url: 'road_geojson.geojson',
+                format: new ol.format.GeoJSON()
+            }),
+            style: new ol.style.Style({
+                stroke: new ol.style.Stroke({ color: 'black', width: 3 }),
+                fill: new ol.style.Fill({ color: 'rgba(0, 0, 0, 1)' })
+            }),
+            visible: false,
+            title: 'Roads'
+        });
+
+        var sportsLayer = new ol.layer.Vector({
+            source: new ol.source.Vector({
+                url: 'sports_geojson.geojson',
+                format: new ol.format.GeoJSON()
+            }),
+            style: new ol.style.Style({
+                stroke: new ol.style.Stroke({ color: 'black', width: 1 }),
+                fill: new ol.style.Fill({ color: 'rgba(144, 238, 144, 0.7)' })
+            }),
+            visible: false,
+            title: 'Sports'
+        });
+
+        // Add all layers to map
+        map.addLayer(boundaryLayer);
+        map.addLayer(academicbuildingsLayer);
+        map.addLayer(residentialbuildingsLayer);
+        map.addLayer(roadsLayer);
+        map.addLayer(sportsLayer);
+
+        // Layer control buttons
+        document.getElementById('osm').addEventListener('click', function() {
+            map.getLayers().forEach(function(layer) {
+                if (layer.get('title') === 'OSM') {
+                    layer.setVisible(true);
+                } else {
+                    layer.setVisible(false);
+                }
+            });
+        });
+
+        document.getElementById('boundary').addEventListener('click', function() {
+            boundaryLayer.setVisible(!boundaryLayer.getVisible());
+        });
+
+        document.getElementById('academic').addEventListener('click', function() {
+            academicbuildingsLayer.setVisible(!academicbuildingsLayer.getVisible());
+        });
+
+        document.getElementById('residential').addEventListener('click', function() {
+            residentialbuildingsLayer.setVisible(!residentialbuildingsLayer.getVisible());
+        });
+
+        document.getElementById('roads').addEventListener('click', function() {
+            roadsLayer.setVisible(!roadsLayer.getVisible());
+        });
+
+        document.getElementById('sports').addEventListener('click', function() {
+            sportsLayer.setVisible(!sportsLayer.getVisible());
+        });
+
+        // Popup for feature information
+        var popup = document.getElementById('popup');
+        var popupContent = document.getElementById('popup-content');
+
+        map.on('click', function(evt) {
+            popup.style.display = 'none';
+            var feature = map.forEachFeatureAtPixel(evt.pixel, function(feature) {
+                return feature;
+            });
+            
+            if (feature) {
+                var properties = feature.getProperties();
+                var table = '<table>';
+                
+                for (var key in properties) {
+                    if (key !== 'geometry') {
+                        table += '<tr><th>' + key + '</th><td>' + properties[key] + '</td></tr>';
+                    }
+                }
+                
+                table += '</table>';
+                popupContent.innerHTML = table;
+                popup.style.display = 'block';
+                
+                popup.style.left = (evt.pixel[0] + 10) + 'px';
+                popup.style.top = (evt.pixel[1] + 10) + 'px';
+            }
+        });
+
+        // Change mouse cursor when over feature
+        map.on('pointermove', function(e) {
+            var pixel = map.getEventPixel(e.originalEvent);
+            var hit = map.hasFeatureAtPixel(pixel);
+            map.getTarget().style.cursor = hit ? 'pointer' : '';
+        });
+
+        // Fit to boundary layer when loaded
+        boundaryLayer.getSource().once('change', function() {
+            if (boundaryLayer.getSource().getState() === 'ready') {
+                map.getView().fit(boundaryLayer.getSource().getExtent(), {
+                    padding: [50, 50, 50, 50]
+                });
+            }
+        });
+
+        // Error handling for layer loading
+        [boundaryLayer, academicbuildingsLayer, residentialbuildingsLayer, roadsLayer, sportsLayer].forEach(layer => {
+            layer.getSource().on('change', function() {
+                if (this.getState() === 'error') {
+                    console.error('Failed to load layer:', layer.get('title'));
+                }
+            });
+        });
+    </script>
+</body>
+</html>
